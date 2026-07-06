@@ -64,7 +64,8 @@ async function connectToWallet(networkId: string, walletKey?: string): Promise<C
     // it. Without this, `status` stays "connecting" and every button stays disabled with no recovery.
     if (initial) return withTimeout(initial.connect(networkId), TIMEOUTS.walletConnect, "Wallet connection");
     if (performance.now() - start > deadline) {
-      throw new Error(`No compatible Midnight wallet found${walletKey ? ` for "${walletKey}"` : ""}. Is 1AM or Lace installed + enabled?`);
+      const walletName = walletKey ? ` (${walletKey})` : "";
+      throw new Error(`No Midnight wallet found${walletName}. Make sure you have 1AM or Lace installed and enabled as a browser extension, then refresh the page.`);
     }
     await new Promise((r) => setTimeout(r, 150));
   }

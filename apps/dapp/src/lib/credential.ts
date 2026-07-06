@@ -30,22 +30,32 @@ export interface ProveRequest {
 
 const HEX32 = /^[0-9a-fA-F]{64}$/; // exactly 32 bytes
 function assertHex32(v: unknown, name: string): void {
-  if (typeof v !== "string" || !HEX32.test(v)) throw new Error(`${name} must be 32-byte hex (64 chars)`);
+  if (typeof v !== "string" || !HEX32.test(v)) {
+    const got = typeof v === "string" ? `"${v}" (${v.length} chars)` : typeof v;
+    throw new Error(`${name} must be 64 hex characters. Got ${got}.`);
+  }
 }
 
 /** Parse a pasted credential JSON; tolerates either the bare credential or the full .demo-deploy.json. */
 export function parseCredential(json: string): DemoCredential {
-  const obj = JSON.parse(json) as Record<string, unknown>;
+  let obj: Record<string, unknown>;
+  try {
+    obj = JSON.parse(json) as Record<string, unknown>;
+  } catch (e) {
+    throw new Error(`Credential JSON is invalid. ${e instanceof Error ? e.message : "Check for extra commas or quotes."}`);
+  }
   const c = (obj.credential ?? obj) as DemoCredential;
   if (!c.holderSecretHex || !Array.isArray(c.merkleSiblingsHex)) {
-    throw new Error("not a credential bundle (missing holderSecretHex / merkleSiblingsHex)");
+    throw new Error("This does not look like a credential bundle. Make sure you pasted the full credential JSON, not just a partial object.");
   }
   // Exactly 16 siblings + 16 flags, both REAL arrays — a truncated/malformed paste otherwise falls
   // through to a cryptic deep-circuit error ("expected Vector<16, Bytes<32>>").
   if (c.merkleSiblingsHex.length !== 16 || !Array.isArray(c.merkleGoesLeft) || c.merkleGoesLeft.length !== 16) {
+    const siblingCount = c.merkleSiblingsHex.length;
+    const leftCount = Array.isArray(c.merkleGoesLeft) ? c.merkleGoesLeft.length : 0;
     throw new Error(
-      `credential must have exactly 16 merkleSiblingsHex + 16 merkleGoesLeft (arrays), got ` +
-        `${c.merkleSiblingsHex.length}/${Array.isArray(c.merkleGoesLeft) ? c.merkleGoesLeft.length : "non-array"}`,
+      `Credential is incomplete or malformed. Expected 16 merkle siblings and 16 left/right flags, but got ${siblingCount} siblings and ${leftCount} flags. ` +
+        `Make sure you did not truncate the credential when pasting.`,
     );
   }
   // Byte fields must be exactly 32-byte hex — otherwise fromHex yields wrong-width bytes that only fail
@@ -55,7 +65,7 @@ export function parseCredential(json: string): DemoCredential {
   assertHex32(c.issuerRandomnessHex, "issuerRandomnessHex");
   c.merkleSiblingsHex.forEach((s, i) => assertHex32(s, `merkleSiblingsHex[${i}]`));
   if (!c.merkleGoesLeft.every((b) => typeof b === "boolean")) {
-    throw new Error("merkleGoesLeft must be an array of booleans");
+    throw new Error("merkleGoesLeft must be an array of true/false values, not other types");
   }
   return c;
 }

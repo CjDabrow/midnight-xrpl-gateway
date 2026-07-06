@@ -24,7 +24,7 @@ async function gatewayFetch(url: string, init: RequestInit = {}): Promise<Respon
     return await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUTS.gatewayFetch) });
   } catch (e) {
     if (e instanceof DOMException && e.name === "TimeoutError") {
-      throw new TimeoutError(`Gateway request did not complete within ${TIMEOUTS.gatewayFetch / 1000}s`);
+      throw new TimeoutError(`Gateway did not respond within ${TIMEOUTS.gatewayFetch / 1000}s. The service may be offline or your connection is slow. Please check your internet and try again.`);
     }
     throw e;
   }
@@ -40,7 +40,8 @@ export async function requestCredential(serviceUrl: string, request: CredentialI
   const body: unknown = await res.json().catch(() => ({}));
   if (!res.ok) {
     const b = body as { error?: string; message?: string };
-    throw new GatewayServiceError(res.status, b.error ?? "error", b.message);
+    const statusLabel = res.status === 429 ? "rate limited (too many requests)" : `error ${res.status}`;
+    throw new GatewayServiceError(res.status, b.error ?? "error", b.message ?? `Credential issuance failed (${statusLabel}): ${b.error ?? "unknown error"}`);
   }
   return body as IssueRecord;
 }
@@ -62,8 +63,8 @@ export interface GatewayInfo {
 
 export async function getGatewayInfo(serviceUrl: string): Promise<GatewayInfo> {
   const res = await gatewayFetch(`${serviceUrl.replace(/\/$/, "")}/health`);
-  if (!res.ok) throw new Error(`gateway /health ${res.status}`);
+  if (!res.ok) throw new Error(`Gateway health check failed with status ${res.status}. Check that the gateway service URL is correct and the service is running.`);
   const body: unknown = await res.json().catch(() => null);
-  if (!body || typeof body !== "object") throw new Error("gateway /health returned a non-JSON response");
+  if (!body || typeof body !== "object") throw new Error("Gateway health check did not return valid JSON. The gateway service may be misconfigured or returning an error page.");
   return body as GatewayInfo;
 }
